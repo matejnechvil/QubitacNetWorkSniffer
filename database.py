@@ -1,74 +1,59 @@
 
-import sqlite3
+import os
+import psycopg
+from dotenv import load_dotenv
 
-DATABASE = "qubitac.db"
-
-
-def init_database():
-
-    connection = sqlite3.connect(DATABASE)
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS packets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            captured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            src_ip TEXT,
-            dst_ip TEXT,
-            protocol TEXT,
-            src_port INTEGER,
-            dst_port INTEGER,
-            size INTEGER
-        )
-    """)
-
-    connection.commit()
-    connection.close()
+load_dotenv()
 
 
-def save_packet(data):
-
-    connection = sqlite3.connect(DATABASE)
-    cursor = connection.cursor()
-
-    cursor.execute("""
-        INSERT INTO packets (
-            src_ip,
-            dst_ip,
-            protocol,
-            src_port,
-            dst_port,
-            size
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        data["src_ip"],
-        data["dst_ip"],
-        data["protocol"],
-        data["src_port"],
-        data["dst_port"],
-        data["size"]
-    ))
-
-    connection.commit()
-    connection.close()
+DB_CONFIG = {
+    "host": "localhost",
+    "port": 5432,
+    "dbname": "qubitac",
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD")
+}
 
 
-def get_packets(limit=100):
+def get_connection():
+    return psycopg.connect(**DB_CONFIG)
 
-    connection = sqlite3.connect(DATABASE)
-    connection.row_factory = sqlite3.Row
 
-    cursor = connection.cursor()
+def save_flow(src_ip, dst_ip, src_port, dst_port, protocol, packets, bytes_sent):
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO flows
+                (src_ip, dst_ip, src_port, dst_port, protocol, packets, bytes_sent)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (src_ip, dst_ip, src_port, dst_port, protocol, packets, bytes_sent)
+            )
 
-    cursor.execute("""
-        SELECT * FROM packets
-        ORDER BY id DESC
-        LIMIT ?
-    """, (limit,))
 
-    packets = [dict(row) for row in cursor.fetchall()]
+def get_flows(limit=100):
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM flows
+                ORDER BY id DESC
+                LIMIT %s
+                """,
+                (limit,)
+            )
 
-    connection.close()
+            return cursor.fetchall()
 
-    return packets
+
+def get_flow(flow_id):
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM flows WHERE id = %s",
+                (flow_id,)
+            )
+
+            return cursor.fetchone()

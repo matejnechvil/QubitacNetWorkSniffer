@@ -17,7 +17,6 @@ def handle_packet(packet):
         packets_parsed += 1
 
 
-
 def start_capture(interface=None, packet_filter=None):
 
     try:
